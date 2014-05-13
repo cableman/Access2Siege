@@ -20,7 +20,7 @@
  *
  *   -g (group):         Group by ip (enter no of files to group into, files may
  *                       not have same size).
- * 
+ *
  *   -f (filter):        Filter out URLs based on regex in the output files.
  *
  *   -l (lines):         Write x lines into each file.
@@ -196,6 +196,10 @@ class Access2Seige {
       $line = explode(' ', $raw_line);
       $index = explode(',', $this->options['p']);
 
+//      print_r($line);
+//      print_r($index);
+//      die;
+
       // Get values form the line.
       $ip = isset($line[$index[0]]) ? $line[$index[0]] : NULL;
       $raw_time = isset($line[$index[1]]) ? $line[$index[1]] : NULL;
@@ -235,7 +239,7 @@ class Access2Seige {
     }
     throw new Exception('Done reading file.');
   }
-  
+
   private function filterURLs($urls) {
     if (isset($this->options['f'])) {
       $urls = preg_grep($this->options['f'], $urls, PREG_GREP_INVERT);
@@ -349,16 +353,17 @@ class accessDB {
   }
 
   private function open($file) {
-    if ($this->db = sqlite_open($file, 0666, $sqliteerror)) {
+    $this->db = new SQLite3($file);
+
+    if($this->db){
       echo "Info: The database have been opened\n";
-    }
-    else {
-      throw new Exception($sqliteerror);
+    } else {
+      throw new Exception($db->lastErrorMsg());
     }
   }
 
   private function close() {
-    sqlite_close($this->db);
+    $this->db->close();
     echo "Info: The database have been closed\n";
   }
 
@@ -370,8 +375,12 @@ class accessDB {
                                      'url text, ' .
                                      'code integer' .
                                      ')';
-      sqlite_query($this->db, $query);
-      echo "Info: A new database have been created\n";
+      if ($this->db->exec($query)) {
+        echo "Info: A new database have been created\n";
+      }
+      else {
+        throw new Exception($db->lastErrorMsg());
+      }
     }
     else {
       echo "Error: No database found\n";
@@ -385,7 +394,9 @@ class accessDB {
 
   public function write($ip, $time, $url, $code) {
     $query = 'INSERT INTO access VALUES (null, "'.$ip.'", '.$time.', "'.$url.'", '.$code.')';
-    sqlite_query($this->db, $query);
+    if (!$this->db->exec($query)) {
+      throw new Exception($db->lastErrorMsg());
+    }
   }
 
   public function countUrls($limit = NULL) {
@@ -393,9 +404,8 @@ class accessDB {
     if ($limit != NULL) {
       $query .= ' WHERE url = \'' . $limit . '\'';
     }
-    $result = sqlite_query($this->db, $query);
-    if ($result) {
-      $row = sqlite_fetch_array($result, SQLITE_ASSOC);
+    $result = $this->db->query($query);
+    while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
       return $row['urls'];
     }
   }
@@ -413,9 +423,9 @@ class accessDB {
 
     // Cache was empty, so try the database.
     $query = 'SELECT distinct ip FROM access;';
-    $result = sqlite_query($this->db, $query);
+    $result = $this->db->query($query);
     if ($result) {
-      while ($row = sqlite_fetch_array($result, SQLITE_ASSOC)) {
+      while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
         $ips[] = $row['ip'];
       }
     }
@@ -446,9 +456,9 @@ class accessDB {
 
     // Get fields
     $data = array();
-    $result = sqlite_query($this->db, $query);
+    $result = $this->db->query($query);
     if ($result) {
-      while ($row = sqlite_fetch_array($result, SQLITE_ASSOC)) {
+      while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
         array_push($data, $row);
       }
     }
@@ -469,7 +479,6 @@ class accessDB {
     }
   }
 }
-
 
 /*****
  * Execute the script by creating the Access2Seige object. Messages may be
